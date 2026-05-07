@@ -1,325 +1,126 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
-<title>DataMatrix Scanner</title>
-
-<style>
-
-body{
-  margin:0;
-  background:#000;
-  overflow:hidden;
-  font-family:Arial;
-}
-
-video{
-  width:100vw;
-  height:100vh;
-  object-fit:cover;
-  position:fixed;
-  inset:0;
-}
-
-#overlay{
-  position:fixed;
-  inset:0;
-  pointer-events:none;
-}
-
-#box{
-  width:260px;
-  height:260px;
-  border:2px solid #4fc3ff;
-  position:absolute;
-  left:50%;
-  top:50%;
-  transform:translate(-50%,-50%);
-  border-radius:18px;
-  box-shadow:0 0 0 9999px rgba(0,0,0,.45);
-}
-
-.corner{
-  position:absolute;
-  width:42px;
-  height:42px;
-  border-color:#7dff95;
-  border-style:solid;
-}
-
-.tl{
-  top:-2px;
-  left:-2px;
-  border-width:4px 0 0 4px;
-}
-
-.tr{
-  top:-2px;
-  right:-2px;
-  border-width:4px 4px 0 0;
-}
-
-.bl{
-  bottom:-2px;
-  left:-2px;
-  border-width:0 0 4px 4px;
-}
-
-.br{
-  bottom:-2px;
-  right:-2px;
-  border-width:0 4px 4px 0;
-}
-
-#line{
-  position:absolute;
-  left:0;
-  right:0;
-  height:2px;
-  background:#4fc3ff;
-  animation:scan 2s linear infinite;
-}
-
-@keyframes scan{
-  0%{top:0}
-  100%{top:100%}
-}
-
-#result{
-  position:fixed;
-  left:20px;
-  right:20px;
-  bottom:20px;
-  background:rgba(20,20,20,.95);
-  color:white;
-  border-radius:20px;
-  padding:18px;
-  transform:translateY(150%);
-  transition:.3s;
-  z-index:10;
-}
-
-#result.show{
-  transform:translateY(0);
-}
-
-#text{
-  word-break:break-word;
-  line-height:1.5;
-}
-
-button{
-  margin-top:14px;
-  border:none;
-  padding:12px 16px;
-  border-radius:12px;
-  background:#4fc3ff;
-  color:black;
-  font-weight:bold;
-}
-
-#status{
-  position:fixed;
-  top:20px;
-  left:50%;
-  transform:translateX(-50%);
-  background:rgba(0,0,0,.7);
-  color:white;
-  padding:12px 18px;
-  border-radius:999px;
-  z-index:20;
-}
-
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+    <title>DataMatrix Scanner</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
+        video { width: 100vw; height: 100vh; object-fit: cover; position: fixed; inset: 0; }
+        #overlay { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+        #box { 
+            width: 260px; height: 260px; border: 2px solid rgba(79, 195, 255, 0.5); 
+            position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); 
+            border-radius: 18px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .45); 
+        }
+        .corner { position: absolute; width: 42px; height: 42px; border-color: #7dff95; border-style: solid; }
+        .tl { top: -2px; left: -2px; border-width: 4px 0 0 4px; }
+        .tr { top: -2px; right: -2px; border-width: 4px 4px 0 0; }
+        .bl { bottom: -2px; left: -2px; border-width: 0 0 4px 4px; }
+        .br { bottom: -2px; right: -2px; border-width: 0 4px 4px 0; }
+        #line { position: absolute; left: 0; right: 0; height: 2px; background: #4fc3ff; animation: scan 2s linear infinite; }
+        @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
+        #result { 
+            position: fixed; left: 20px; right: 20px; bottom: 20px; background: rgba(20,20,20,.95); 
+            color: white; border-radius: 20px; padding: 18px; transform: translateY(150%); 
+            transition: .3s; z-index: 100; 
+        }
+        #result.show { transform: translateY(0); }
+        button { margin-top: 14px; border: none; padding: 12px; border-radius: 12px; background: #4fc3ff; font-weight: bold; width: 100%; }
+        #status { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.7); color: white; padding: 10px 20px; border-radius: 999px; z-index: 100; }
+        #zoom-container { position: fixed; bottom: 160px; left: 50%; transform: translateX(-50%); z-index: 90; width: 70%; display: none; }
+    </style>
 </head>
-
 <body>
 
-<div id="status">kamera başlatılıyor...</div>
-
-<video id="video" autoplay playsinline muted></video>
+<div id="status">Başlatılıyor...</div>
+<video id="video" playsinline></video>
 
 <div id="overlay">
-  <div id="box">
+    <div id="box">
+        <div class="corner tl"></div><div class="corner tr"></div>
+        <div class="corner bl"></div><div class="corner br"></div>
+        <div id="line"></div>
+    </div>
+</div>
 
-    <div class="corner tl"></div>
-    <div class="corner tr"></div>
-    <div class="corner bl"></div>
-    <div class="corner br"></div>
-
-    <div id="line"></div>
-
-  </div>
+<div id="zoom-container">
+    <input type="range" id="zoom-range" min="1" max="1" step="0.1" style="width:100%">
 </div>
 
 <div id="result">
-  <div id="text"></div>
-  <button id="copy">Kopyala</button>
+    <div id="text"></div>
+    <button id="copy">Kopyala</button>
 </div>
 
-<canvas id="canvas" style="display:none"></canvas>
-
 <script src="https://unpkg.com/@zxing/library@latest"></script>
-
 <script>
+    const video = document.getElementById('video');
+    const status = document.getElementById('status');
+    const zoomRange = document.getElementById('zoom-range');
+    const zoomContainer = document.getElementById('zoom-container');
+    
+    // Hatayı gideren kısım: Instance oluşturuyoruz
+    const codeReader = new ZXing.BrowserDatamatrixCodeReader(); 
+    let lastText = null;
 
-const video = document.getElementById("video");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d",{willReadFrequently:true});
+    async function start() {
+        try {
+            // Video cihazlarını listele (Yeni versiyonda instance üzerinden)
+            const devices = await codeReader.listVideoInputDevices();
+            
+            const backCamera = devices.find(d => 
+                d.label.toLowerCase().includes('back') || 
+                d.label.toLowerCase().includes('arka')
+            ) || devices[0];
 
-const resultBox = document.getElementById("result");
-const textBox = document.getElementById("text");
-const status = document.getElementById("status");
+            // Taramayı başlat
+            codeReader.decodeFromVideoDevice(backCamera.deviceId, 'video', (result, err) => {
+                if (result) {
+                    const text = result.getText();
+                    if(text !== lastText) {
+                        lastText = text;
+                        document.getElementById('text').innerText = text;
+                        document.getElementById('result').classList.add('show');
+                        status.innerHTML = "Kod Okundu";
+                        setTimeout(() => { lastText = null; }, 3000);
+                    }
+                }
+            });
 
-const codeReader = new ZXing.MultiFormatReader();
+            status.innerHTML = "Kamera Hazır";
+            
+            // Zoom ayarı (iPad Chrome desteği için)
+            setTimeout(async () => {
+                const stream = video.srcObject;
+                if(stream) {
+                    const [track] = stream.getVideoTracks();
+                    const caps = track.getCapabilities?.();
+                    if(caps && caps.zoom) {
+                        zoomContainer.style.display = 'block';
+                        zoomRange.min = caps.zoom.min;
+                        zoomRange.max = caps.zoom.max;
+                        zoomRange.step = caps.zoom.step;
+                        zoomRange.oninput = () => {
+                            track.applyConstraints({ advanced: [{ zoom: zoomRange.value }] });
+                        };
+                    }
+                }
+            }, 2000);
 
-let lastText = null;
-
-async function start(){
-
-  try{
-
-    const stream =
-      await navigator.mediaDevices.getUserMedia({
-        video:{
-          facingMode:"environment",
-          width:{ideal:1280},
-          height:{ideal:720}
-        },
-        audio:false
-      });
-
-    video.srcObject = stream;
-
-    await video.play();
-
-    status.innerHTML = "kamera açık";
-
-    scan();
-
-  }catch(err){
-
-    console.error(err);
-
-    status.innerHTML = "kamera açılamadı";
-  }
-}
-
-async function scan(){
-
-  try{
-
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-
-    if(!vw || !vh){
-
-      requestAnimationFrame(scan);
-      return;
+        } catch (err) {
+            status.innerHTML = "Hata: " + err.message;
+            console.error(err);
+        }
     }
 
-    const size = Math.min(vw,vh)*0.40;
+    document.getElementById('copy').onclick = () => {
+        navigator.clipboard.writeText(document.getElementById('text').innerText);
+        status.innerHTML = "Kopyalandı!";
+        setTimeout(() => { status.innerHTML = "Kamera Hazır"; }, 2000);
+    };
 
-    const sx = (vw-size)/2;
-    const sy = (vh-size)/2;
-
-    canvas.width = size;
-    canvas.height = size;
-
-    ctx.drawImage(
-      video,
-      sx,
-      sy,
-      size,
-      size,
-      0,
-      0,
-      size,
-      size
-    );
-
-    const img = ctx.getImageData(
-      0,
-      0,
-      size,
-      size
-    );
-
-    const luminance =
-      new ZXing.RGBLuminanceSource(
-        img.data,
-        size,
-        size
-      );
-
-    const binaryBitmap =
-      new ZXing.BinaryBitmap(
-        new ZXing.HybridBinarizer(luminance)
-      );
-
-    const hints = new Map();
-
-    hints.set(
-      ZXing.DecodeHintType.POSSIBLE_FORMATS,
-      [
-        ZXing.BarcodeFormat.DATA_MATRIX,
-        ZXing.BarcodeFormat.QR_CODE
-      ]
-    );
-
-    hints.set(
-      ZXing.DecodeHintType.TRY_HARDER,
-      true
-    );
-
-    const result =
-      codeReader.decode(
-        binaryBitmap,
-        hints
-      );
-
-    if(result){
-
-      const text = result.getText();
-
-      if(text !== lastText){
-
-        lastText = text;
-
-        navigator.vibrate?.([50,30,50]);
-
-        status.innerHTML = "kod okundu";
-
-        textBox.innerHTML = text;
-
-        resultBox.classList.add("show");
-
-        setTimeout(()=>{
-          lastText = null;
-        },3000);
-      }
-    }
-
-  }catch(err){
-  }
-
-  requestAnimationFrame(scan);
-}
-
-document
-.getElementById("copy")
-.onclick = async ()=>{
-
-  await navigator.clipboard.writeText(
-    textBox.innerText
-  );
-
-  status.innerHTML = "kopyalandı";
-};
-
-start();
-
+    window.onload = start;
 </script>
 
 </body>
