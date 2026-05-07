@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>lens. — Kod Okuyucu</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Fraunces:ital,wght@0,300;0,600;1,300&display=swap');
+
+    :root {
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --border: #2a2a2a;
+      --accent: #c8f060;
+      --accent2: #60d0f0;
+      --accent3: #f060a0;
+      --text: #e8e8e0;
+      --muted: #666660;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; overflow: hidden; user-select: none; }
+
+    .app { display: flex; flex-direction: column; height: 100dvh; }
+
+    /* ── Header ── */
+    .header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 12px; z-index: 10; flex-shrink: 0; }
+    .logo { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; letter-spacing: -0.5px; color: var(--accent); }
+    .status-pill { display: flex; align-items: center; gap: 7px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; font-size: 11px; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; transition: all 0.3s; }
+    .status-pill.live { border-color: var(--accent); color: var(--accent); }
+    .status-pill.scanning { border-color: var(--accent2); color: var(--accent2); }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); transition: background 0.3s; }
+    .status-pill.live .dot { background: var(--accent); animation: blink 1.2s ease-in-out infinite; }
+    .status-pill.scanning .dot { background: var(--accent2); animation: blink 0.6s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+    /* ── Viewport ── */
+    .viewport-wrap { flex: 1; position: relative; overflow: hidden; margin: 0 16px; border-radius: 20px; border: 1px solid var(--border); background: #050505; }
+    video { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 19px; }
+
+    .corner { position: absolute; width: 32px; height: 32px; z-index: 5; pointer-events: none; transition: border-color 0.3s; }
+    .corner.tl { top: 14px; left: 14px; border-top: 2px solid var(--accent); border-left: 2px solid var(--accent); border-radius: 4px 0 0 0; }
+    .corner.tr { top: 14px; right: 14px; border-top: 2px solid var(--accent); border-right: 2px solid var(--accent); border-radius: 0 4px 0 0; }
+    .corner.bl { bottom: 14px; left: 14px; border-bottom: 2px solid var(--accent); border-left: 2px solid var(--accent); border-radius: 0 0 0 4px; }
+    .corner.br { bottom: 14px; right: 14px; border-bottom: 2px solid var(--accent); border-right: 2px solid var(--accent); border-radius: 0 0 4px 0; }
+    .viewport-wrap.found .corner { border-color: var(--accent2) !important; animation: foundPulse 0.8s ease-out; }
+    @keyframes foundPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .scan-line { position: absolute; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent 0%, var(--accent2) 50%, transparent 100%); opacity: 0; z-index: 4; pointer-events: none; transition: opacity 0.5s; }
+    .scan-line.active { opacity: 0.5; animation: scan 2s linear infinite; }
+    @keyframes scan { 0%{top:10%} 100%{top:90%} }
+
+    .reticle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -52%); width: 200px; height: 200px; border: 1.5px dashed rgba(96,208,240,0.4); border-radius: 12px; z-index: 4; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
+    .reticle.visible { opacity: 1; animation: reticlePulse 2s ease-in-out infinite; }
+    @keyframes reticlePulse { 0%,100%{border-color:rgba(96,208,240,0.4)} 50%{border-color:rgba(96,208,240,0.9)} }
+
+    .idle-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; transition: opacity 0.4s; z-index: 3; }
+    .idle-overlay.hidden { opacity: 0; pointer-events: none; }
+    .idle-icon { width: 64px; height: 64px; border: 2px solid var(--border); border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+    .idle-icon svg { width: 28px; height: 28px; stroke: var(--muted); fill: none; stroke-width: 1.5; }
+    .idle-text { font-size: 12px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+
+    /* Mode toggle */
+    .mode-toggle { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; background: rgba(10,10,10,0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--border); border-radius: 20px; padding: 3px; z-index: 8; gap: 2px; }
+    .mode-btn { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 13px; border-radius: 16px; background: transparent; border: none; color: var(--muted); cursor: pointer; transition: all 0.2s; -webkit-tap-highlight-color: transparent; }
+    .mode-btn.active { background: var(--accent); color: #0a0a0a; }
+
+    /* History btn */
+    .history-btn { position: absolute; top: 14px; right: 14px; z-index: 8; width: 34px; height: 34px; border-radius: 50%; background: rgba(10,10,10,0.8); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: all 0.2s; }
+    .history-btn svg { width: 15px; height: 15px; stroke: var(--muted); fill: none; stroke-width: 1.5; stroke-linecap: round; }
+    .history-count { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; border-radius: 50%; background: var(--accent3); font-size: 9px; color: #fff; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; }
+    .history-count.show { opacity: 1; }
+
+    /* Result panel */
+    .result-panel { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, rgba(10,10,10,0.98) 70%, transparent); border-radius: 0 0 19px 19px; padding: 28px 20px 18px; z-index: 7; transform: translateY(100%); transition: transform 0.35s cubic-bezier(.4,0,.2,1); }
+    .result-panel.show { transform: translateY(0); }
+    .result-type { font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent2); margin-bottom: 6px; }
+    .result-text { font-size: 14px; color: var(--text); word-break: break-all; max-height: 72px; overflow-y: auto; line-height: 1.5; padding-right: 4px; }
+    .result-text::-webkit-scrollbar { width: 3px; }
+    .result-text::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .result-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .result-action { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 6px 14px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); color: var(--text); cursor: pointer; transition: all 0.2s; -webkit-tap-highlight-color: transparent; }
+    .result-action.primary { background: var(--accent2); border-color: var(--accent2); color: #0a0a0a; }
+    .result-action:active { transform: scale(0.95); }
+
+    /* History drawer */
+    .history-drawer { position: absolute; inset: 0; background: rgba(10,10,10,0.97); border-radius: 19px; z-index: 20; padding: 16px; transform: translateX(100%); transition: transform 0.3s cubic-bezier(.4,0,.2,1); display: flex; flex-direction: column; }
+    .history-drawer.open { transform: translateX(0); }
+    .history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .history-title { font-size: 12px; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; }
+    .history-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 2px 6px; }
+    .history-clear { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+    .history-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .history-list::-webkit-scrollbar { width: 3px; }
+    .history-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .history-item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; cursor: pointer; transition: border-color 0.2s; }
+    .history-item:active { border-color: var(--accent2); }
+    .history-item-type { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent2); margin-bottom: 3px; }
+    .history-item-text { font-size: 12px; color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .history-item-time { font-size: 9px; color: var(--muted); margin-top: 4px; }
+    .history-empty { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); letter-spacing: 0.08em; }
+
+    /* Zoom bar */
+    .zoom-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: rgba(10,10,10,0.72); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--border); border-radius: 30px; padding: 8px 16px; z-index: 6; opacity: 0; transition: opacity 0.4s; pointer-events: none; min-width: 220px; }
+    .zoom-bar.visible { opacity: 1; pointer-events: all; }
+    .zoom-label { font-size: 11px; color: var(--accent); letter-spacing: 0.08em; min-width: 34px; text-align: right; }
+    .zoom-slider { -webkit-appearance: none; appearance: none; flex: 1; height: 3px; border-radius: 2px; background: var(--border); outline: none; cursor: pointer; }
+    .zoom-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 2px solid #0a0a0a; box-shadow: 0 0 0 2px var(--accent); cursor: pointer; }
+    .zoom-shortcut { font-size: 10px; color: var(--muted); letter-spacing: 0.06em; cursor: pointer; padding: 2px 5px; border-radius: 4px; transition: color 0.2s; }
+    .zoom-shortcut:active { color: var(--accent); }
+
+    /* Controls */
+    .controls { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px 28px; flex-shrink: 0; }
+    .ctrl-btn { width: 48px; height: 48px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; -webkit-tap-highlight-color: transparent; outline: none; }
+    .ctrl-btn:active { transform: scale(0.92); }
+    .ctrl-btn svg { width: 20px; height: 20px; stroke: var(--text); fill: none; stroke-width: 1.5; stroke-linecap: round; }
+    .shutter { width: 74px; height: 74px; border-radius: 50%; background: transparent; border: 2px solid var(--accent); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: border-color 0.3s; -webkit-tap-highlight-color: transparent; outline: none; }
+    .shutter-inner { width: 58px; height: 58px; border-radius: 50%; background: var(--accent); transition: transform 0.15s, background 0.3s; }
+    .shutter:active .shutter-inner { transform: scale(0.88); }
+
+    .flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 100; }
+    .flash.go { animation: flashAnim 0.35s ease-out forwards; }
+    @keyframes flashAnim { 0%{opacity:0.85} 100%{opacity:0} }
+
+    .toast { position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 20px; font-size: 12px; color: var(--text); letter-spacing: 0.05em; opacity: 0; transition: all 0.3s; z-index: 150; white-space: nowrap; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    .snap-preview { position: fixed; bottom: 90px; left: 24px; width: 64px; height: 64px; border-radius: 10px; border: 2px solid var(--accent); overflow: hidden; opacity: 0; transform: scale(0.8); transition: all 0.3s; z-index: 50; }
+    .snap-preview.show { opacity: 1; transform: scale(1); }
+    .snap-preview img { width: 100%; height: 100%; object-fit: cover; }
+
+    .lib-loading { position: fixed; top: 0; left: 0; right: 0; background: var(--surface); border-bottom: 1px solid var(--border); text-align: center; padding: 8px; font-size: 11px; color: var(--muted); letter-spacing: 0.08em; z-index: 200; transition: opacity 0.5s; }
+    .lib-loading.done { opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+
+<div class="lib-loading" id="libLoading">⏳ ZXing kütüphanesi yükleniyor…</div>
+
+<div class="app">
+  <div class="header">
+    <div class="logo">lens.</div>
+    <div class="status-pill" id="statusPill">
+      <div class="dot"></div>
+      <span id="statusText">hazır</span>
+    </div>
+  </div>
+
+  <div class="viewport-wrap" id="viewportWrap">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="scan-line" id="scanLine"></div>
+
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+
+    <div class="reticle" id="reticle"></div>
+
+    <div class="mode-toggle">
+      <button class="mode-btn active" data-mode="photo">📷 Fotoğraf</button>
+      <button class="mode-btn" data-mode="scan">🔍 Tara</button>
+    </div>
+
+    <div class="history-btn" id="historyBtn">
+      <svg viewBox="0 0 24 24"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+      <div class="history-count" id="historyCount">0</div>
+    </div>
+
+    <div class="result-panel" id="resultPanel">
+      <div class="result-type" id="resultType">QR KOD</div>
+      <div class="result-text" id="resultText"></div>
+      <div class="result-actions">
+        <button class="result-action primary" id="resultCopy">Kopyala</button>
+        <button class="result-action" id="resultOpen">Aç / Link</button>
+        <button class="result-action" id="resultClose">✕ Kapat</button>
+      </div>
+    </div>
+
+    <div class="history-drawer" id="historyDrawer">
+      <div class="history-header">
+        <span class="history-title">Tarama Geçmişi</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="history-clear" id="historyClear">Temizle</button>
+          <button class="history-close" id="historyClose">✕</button>
+        </div>
+      </div>
+      <div class="history-list" id="historyList"></div>
+    </div>
+
+    <div class="zoom-bar" id="zoomBar">
+      <span class="zoom-shortcut" data-z="1">1×</span>
+      <span class="zoom-shortcut" data-z="2">2×</span>
+      <span class="zoom-shortcut" data-z="5">5×</span>
+      <input type="range" class="zoom-slider" id="zoomSlider" min="1" max="10" step="0.1" value="1"/>
+      <span class="zoom-label" id="zoomLabel">1×</span>
+    </div>
+
+    <div class="idle-overlay" id="idleOverlay">
+      <div class="idle-icon">
+        <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </div>
+      <div class="idle-text">kamerayı başlat</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="ctrl-btn" id="flipBtn">
+      <svg viewBox="0 0 24 24"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+    </button>
+    <button class="shutter" id="shutterBtn">
+      <div class="shutter-inner" id="shutterInner"></div>
+    </button>
+    <button class="ctrl-btn" id="toggleBtn">
+      <svg viewBox="0 0 24 24" id="toggleIcon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="flash" id="flash"></div>
+<div class="toast" id="toast"></div>
+<div class="snap-preview" id="snapPreview"><img id="snapImg" src="" alt=""/></div>
+<canvas id="canvas" style="display:none"></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.21.1/umd/index.min.js"
+        integrity="sha512-4HQEzCjBBiMbMGbHaWDq3N9jQVwjzOFGDHi1lRhHVISMsVRBKuNUPBBhZh9M7xMw8QnHQIhNTg/q6kEeOlLg=="
+        crossorigin="anonymous"></script>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const video        = $('video');
+  const toggleBtn    = $('toggleBtn');
+  const toggleIcon   = $('toggleIcon');
+  const flipBtn      = $('flipBtn');
+  const shutterBtn   = $('shutterBtn');
+  const shutterInner = $('shutterInner');
+  const scanLine     = $('scanLine');
+  const idleOverlay  = $('idleOverlay');
+  const statusPill   = $('statusPill');
+  const statusText   = $('statusText');
+  const flash        = $('flash');
+  const toast        = $('toast');
+  const snapPreview  = $('snapPreview');
+  const snapImg      = $('snapImg');
+  const canvas       = $('canvas');
+  const zoomBar      = $('zoomBar');
+  const zoomSlider   = $('zoomSlider');
+  const zoomLabel    = $('zoomLabel');
+  const viewportWrap = $('viewportWrap');
+  const reticle      = $('reticle');
+  const resultPanel  = $('resultPanel');
+  const resultType   = $('resultType');
+  const resultText   = $('resultText');
+  const resultCopy   = $('resultCopy');
+  const resultOpen   = $('resultOpen');
+  const resultClose  = $('resultClose');
+  const historyBtn   = $('historyBtn');
+  const historyCount = $('historyCount');
+  const historyDrawer= $('historyDrawer');
+  const historyClose = $('historyClose');
+  const historyClear = $('historyClear');
+  const historyList  = $('historyList');
+  const libLoading   = $('libLoading');
+
+  let stream       = null;
+  let facingMode   = 'environment';
+  let currentZoom  = 1;
+  let maxZoom      = 10;
+  let zoomHideTimer= null;
+  let currentMode  = 'photo';
+  let scanning     = false;
+  let scanInterval = null;
+  let scanHistory  = [];
+  let lastResult   = null;
+  let zxingReader  = null;
+
+  // ── ZXing init ──
+  function initZXing() {
+    try {
+      zxingReader = new ZXing.MultiFormatReader();
+      libLoading.textContent = '✓ ZXing hazır — DataMatrix, QR, Aztec, PDF417 destekleniyor';
+      setTimeout(() => libLoading.classList.add('done'), 1500);
+    } catch(e) {
+      libLoading.textContent = '⚠️ ZXing başlatılamadı: ' + e.message;
+    }
+  }
+
+  if (typeof ZXing !== 'undefined') {
+    initZXing();
+  } else {
+    const sc = document.querySelector('script[src*="zxing"]');
+    sc.addEventListener('load', initZXing);
+    sc.addEventListener('error', () => { libLoading.textContent = '⚠️ ZXing CDN yüklenemedi.'; });
+  }
+
+  // ── Toast ──
+  let toastTimer = null;
+  function showToast(msg, dur=2000) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>toast.classList.remove('show'), dur);
+  }
+
+  // ── Zoom ──
+  function showZoomBar() {
+    zoomBar.classList.add('visible');
+    clearTimeout(zoomHideTimer);
+    zoomHideTimer = setTimeout(()=>zoomBar.classList.remove('visible'), 3000);
+  }
+
+  async function applyZoom(zoom) {
+    if (!stream) return;
+    const track = stream.getVideoTracks()[0];
+    const caps  = track.getCapabilities ? track.getCapabilities() : {};
+    zoom = Math.min(Math.max(zoom, caps.zoom ? caps.zoom.min : 1), caps.zoom ? caps.zoom.max : maxZoom);
+    currentZoom = zoom;
+    zoomSlider.value = zoom;
+    zoomLabel.textContent = zoom.toFixed(1).replace('.0','') + '×';
+    if (caps.zoom) {
+      try { await track.applyConstraints({advanced:[{zoom}]}); return; } catch(e){}
+    }
+    video.style.transform = `scale(${zoom})`;
+    video.style.transformOrigin = 'center center';
+  }
+
+  zoomSlider.addEventListener('input', ()=>{ applyZoom(parseFloat(zoomSlider.value)); showZoomBar(); });
+  document.querySelectorAll('.zoom-shortcut').forEach(b=>{
+    b.addEventListener('click', ()=>{ applyZoom(parseFloat(b.dataset.z)); showZoomBar(); });
+  });
+
+  // Pinch
+  let pd0=0, pz0=1;
+  function d2(a,b){return Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);}
+  viewportWrap.addEventListener('touchstart',e=>{if(e.touches.length===2){pd0=d2(e.touches[0],e.touches[1]);pz0=currentZoom;e.preventDefault();}},{passive:false});
+  viewportWrap.addEventListener('touchmove',e=>{if(e.touches.length===2){applyZoom(Math.min(Math.max(pz0*(d2(e.touches[0],e.touches[1])/pd0),1),maxZoom));showZoomBar();e.preventDefault();}},{passive:false});
+
+  // ── Mode ──
+  document.querySelectorAll('.mode-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      if(!stream){showToast('Önce kamerayı başlatın');return;}
+      document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      setMode(btn.dataset.mode);
+    });
+  });
+
+  function setMode(mode) {
+    currentMode = mode;
+    if (mode==='scan') {
+      reticle.classList.add('visible');
+      statusPill.className='status-pill scanning';
+      statusText.textContent='tarıyor';
+      shutterInner.style.background='var(--accent2)';
+      document.querySelector('.shutter').style.borderColor='var(--accent2)';
+      startScan();
+    } else {
+      reticle.classList.remove('visible');
+      statusPill.className='status-pill' + (stream?' live':'');
+      statusText.textContent=stream?'canlı':'hazır';
+      shutterInner.style.background='var(--accent)';
+      document.querySelector('.shutter').style.borderColor='var(--accent)';
+      stopScan();
+      resultPanel.classList.remove('show');
+    }
+  }
+
+  // ── Scan engine ──
+  function startScan() {
+    if (scanning||!zxingReader) return;
+    scanning=true; lastResult=null;
+    scanInterval=setInterval(doScan, 350);
+  }
+  function stopScan() {
+    scanning=false; clearInterval(scanInterval); scanInterval=null;
+  }
+
+  function doScan() {
+    if (!stream||!zxingReader) return;
+    try {
+      const W=video.videoWidth||640, H=video.videoHeight||480;
+      canvas.width=W; canvas.height=H;
+      canvas.getContext('2d').drawImage(video,0,0,W,H);
+      const imgData=canvas.getContext('2d').getImageData(0,0,W,H);
+
+      const lum=new ZXing.RGBLuminanceSource(imgData.data,W,H);
+      const bin=new ZXing.HybridBinarizer(lum);
+      const bmp=new ZXing.BinaryBitmap(bin);
+
+      const hints=new Map();
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[
+        ZXing.BarcodeFormat.DATA_MATRIX,
+        ZXing.BarcodeFormat.QR_CODE,
+        ZXing.BarcodeFormat.AZTEC,
+        ZXing.BarcodeFormat.PDF_417,
+      ]);
+      hints.set(ZXing.DecodeHintType.TRY_HARDER,true);
+
+      const result=zxingReader.decode(bmp,hints);
+      if(result) onCodeFound(result);
+    } catch(e){
+      // NotFoundException — normal, no code visible
+    }
+  }
+
+  function onCodeFound(result) {
+    const text=result.getText();
+    const fmt=fmtName(result.getBarcodeFormat());
+    if(text===lastResult) return;
+    lastResult=text;
+
+    if(navigator.vibrate) navigator.vibrate([40,20,40]);
+
+    viewportWrap.classList.add('found');
+    setTimeout(()=>viewportWrap.classList.remove('found'),800);
+
+    resultType.textContent=fmt;
+    resultText.textContent=text;
+    resultPanel.classList.add('show');
+
+    const entry={text,format:fmt,time:new Date().toLocaleTimeString('tr-TR')};
+    scanHistory.unshift(entry);
+    if(scanHistory.length>50) scanHistory.pop();
+    updateHistoryBadge();
+
+    setTimeout(()=>{ lastResult=null; },3000);
+  }
+
+  function fmtName(fmt){
+    const m={
+      [ZXing.BarcodeFormat.DATA_MATRIX]:'DATA MATRIX',
+      [ZXing.BarcodeFormat.QR_CODE]:'QR KOD',
+      [ZXing.BarcodeFormat.AZTEC]:'AZTEC',
+      [ZXing.BarcodeFormat.PDF_417]:'PDF 417',
+    };
+    return m[fmt]||'BARKOD';
+  }
+
+  resultCopy.addEventListener('click',()=>{
+    const t=resultText.textContent;
+    if(navigator.clipboard){navigator.clipboard.writeText(t).then(()=>showToast('📋 Kopyalandı'));}
+    else{const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);showToast('📋 Kopyalandı');}
+  });
+
+  resultOpen.addEventListener('click',()=>{
+    const t=resultText.textContent;
+    if(/^https?:\/\//i.test(t)){window.open(t,'_blank');}
+    else{showToast('URL değil, kopyalandı');if(navigator.clipboard)navigator.clipboard.writeText(t);}
+  });
+
+  resultClose.addEventListener('click',()=>{resultPanel.classList.remove('show');lastResult=null;});
+
+  // ── History ──
+  function updateHistoryBadge(){
+    historyCount.textContent=scanHistory.length;
+    historyCount.classList.toggle('show',scanHistory.length>0);
+  }
+
+  historyBtn.addEventListener('click',()=>{renderHistory();historyDrawer.classList.add('open');});
+  historyClose.addEventListener('click',()=>historyDrawer.classList.remove('open'));
+  historyClear.addEventListener('click',()=>{scanHistory=[];updateHistoryBadge();renderHistory();});
+
+  function renderHistory(){
+    if(scanHistory.length===0){historyList.innerHTML='<div class="history-empty">Henüz tarama yapılmadı</div>';return;}
+    historyList.innerHTML=scanHistory.map((e,i)=>`
+      <div class="history-item" data-i="${i}">
+        <div class="history-item-type">${e.format}</div>
+        <div class="history-item-text">${esc(e.text)}</div>
+        <div class="history-item-time">${e.time}</div>
+      </div>`).join('');
+    historyList.querySelectorAll('.history-item').forEach(el=>{
+      el.addEventListener('click',()=>{
+        const e=scanHistory[el.dataset.i];
+        resultType.textContent=e.format;resultText.textContent=e.text;
+        resultPanel.classList.add('show');historyDrawer.classList.remove('open');
+      });
+    });
+  }
+  function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+  // ── Camera ──
+  async function startCamera(){
+    try {
+      if(stream) stopCamera();
+      stream=await navigator.mediaDevices.getUserMedia({
+        video:{facingMode,width:{ideal:1920},height:{ideal:1080}},audio:false
+      });
+      video.srcObject=stream; video.play();
+
+      const track=stream.getVideoTracks()[0];
+      const caps=track.getCapabilities?track.getCapabilities():{};
+      if(caps.zoom){maxZoom=caps.zoom.max;zoomSlider.max=maxZoom;}
+
+      applyZoom(1); video.style.transform='';
+
+      idleOverlay.classList.add('hidden');
+      scanLine.classList.add('active');
+
+      if(currentMode==='scan'){setMode('scan');}
+      else{statusPill.className='status-pill live';statusText.textContent='canlı';}
+
+      zoomBar.classList.add('visible');
+      zoomHideTimer=setTimeout(()=>zoomBar.classList.remove('visible'),3000);
+      toggleIcon.innerHTML='<rect x="3" y="3" width="18" height="18" rx="2"/>';
+    } catch(err){
+      showToast(err.name==='NotAllowedError'?'Kamera izni reddedildi.':'Kamera açılamadı: '+err.message, 3000);
+    }
+  }
+
+  function stopCamera(){
+    stopScan();
+    if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;video.style.transform='';}
+    idleOverlay.classList.remove('hidden');
+    scanLine.classList.remove('active');
+    statusPill.className='status-pill';statusText.textContent='hazır';
+    zoomBar.classList.remove('visible');
+    resultPanel.classList.remove('show');
+    toggleIcon.innerHTML='<polygon points="5 3 19 12 5 21 5 3"/>';
+  }
+
+  toggleBtn.addEventListener('click',()=>stream?stopCamera():startCamera());
+
+  flipBtn.addEventListener('click',()=>{
+    facingMode=facingMode==='environment'?'user':'environment';
+    if(stream) startCamera();
+    showToast(facingMode==='user'?'Ön kamera':'Arka kamera');
+  });
+
+  shutterBtn.addEventListener('click',()=>{
+    if(!stream){showToast('Önce kamerayı başlatın');return;}
+    if(currentMode==='scan'){doScan();showToast('🔍 Taranıyor…',800);return;}
+
+    canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+    canvas.getContext('2d').drawImage(video,0,0);
+    const dataURL=canvas.toDataURL('image/jpeg',0.92);
+
+    flash.classList.remove('go');void flash.offsetWidth;flash.classList.add('go');
+    snapImg.src=dataURL;snapPreview.classList.add('show');
+    setTimeout(()=>snapPreview.classList.remove('show'),3000);
+
+    const a=document.createElement('a');a.href=dataURL;a.download=`foto_${Date.now()}.jpg`;a.click();
+    showToast('📸 Fotoğraf kaydedildi');
+  });
+})();
+</script>
+</body>
+</html>
